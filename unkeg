@@ -1,0 +1,68 @@
+#! /bin/bash
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: unkeg <package-name> [output-directory]"
+    echo "Extracts an installed Auro package back into a keg directory structure."
+    exit 1
+fi
+
+# Get the real user's home directory
+if [[ -n "$SUDO_USER" ]]; then
+    REAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    REAL_HOME="$HOME"
+fi
+
+INSTALLED="$REAL_HOME/.keg/installed"
+BIN="$REAL_HOME/.keg/bin"
+DATA="$REAL_HOME/.keg/data"
+LIB="/usr/local/lib"
+DESKTOP="$REAL_HOME/.local/share/applications"
+ICONS="$REAL_HOME/.local/share/icons/hicolor/256x256/apps"
+
+PKG_NAME="$1"
+BIN_NAME=$(echo "$PKG_NAME" | tr '[:upper:]' '[:lower:]')
+MANIFEST="$INSTALLED/$BIN_NAME.txt"
+
+if [[ ! -f "$MANIFEST" ]]; then
+    echo "Error: Package '$PKG_NAME' is not installed."
+    exit 1
+fi
+
+OUTPUT_DIR="${2:-.}/$PKG_NAME"
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR/data"
+mkdir -p "$OUTPUT_DIR/lib"
+mkdir -p "$OUTPUT_DIR/desktop"
+mkdir -p "$OUTPUT_DIR/icons"
+
+echo "$PKG_NAME" > "$OUTPUT_DIR/keg-name.txt"
+
+while IFS= read -r file; do
+    [[ ! -e "$file" && ! -L "$file" ]] && continue
+    basename=$(basename "$file")
+
+    case "$file" in
+        "$REAL_HOME/.local/bin/"*)
+            # Skip symlinks in ~/.local/bin (duplicates of binaries)
+            ;;
+        "$ICONS/"*)
+            # Resolve the symlink target and copy the icon
+            cp -L "$file" "$OUTPUT_DIR/icons/$basename"
+            ;;
+        "$BIN/"*)
+            cp "$file" "$OUTPUT_DIR/$basename"
+            ;;
+        "$DATA/"*)
+            cp -r "$file" "$OUTPUT_DIR/data/$basename"
+            ;;
+        "$LIB/"*)
+            cp -r "$file" "$OUTPUT_DIR/lib/$basename"
+            ;;
+        "$DESKTOP/"*)
+            cp "$file" "$OUTPUT_DIR/desktop/$basename"
+            ;;
+    esac
+done < "$MANIFEST"
+
+echo "Package '$PKG_NAME' extracted to $OUTPUT_DIR"
